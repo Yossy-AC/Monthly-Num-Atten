@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=\"$PATH:/c/Users/yoshi/.local/bin\")",
+      "Bash(uv run python -c \"from services.aggregator import aggregate; print\\(''OK''\\)\")",
+      "Bash(uv run python -c \"from main import app; print\\(''FastAPI app OK''\\)\")",
+      "Bash(uv run uvicorn main:app --reload)",
+      "Bash(git add CLAUDE.md .gitignore main.py pyproject.toml uv.lock .python-version routers/ services/ templates/ static/ uploads/.gitkeep outputs/.gitkeep)",
+      "Bash(git add .claude/)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

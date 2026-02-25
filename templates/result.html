@@ -1,0 +1,36 @@
+<div class="result-section">
+  <div class="result-header">
+    <h2>集計結果</h2>
+    <a href="/download" class="btn-download">Excelダウンロード</a>
+  </div>
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>講座名</th>
+          <th>学年</th>
+          <th>教室</th>
+          <th>担当</th>
+          <th>年月</th>
+          <th>受講人数</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row["講座名"] }}</td>
+          <td>{{ row["学年"] }}</td>
+          <td>{{ row["教室"] }}</td>
+          <td>{{ row["担当"] }}</td>
+          <td>{{ row["年月"] }}</td>
+          <td class="num">{{ row["受講人数"] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>データがありません。</p>
+  {% endif %}
+</div>
