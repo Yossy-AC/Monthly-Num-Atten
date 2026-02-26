@@ -8,23 +8,51 @@
     <table>
       <thead>
         <tr>
-          <th>講座名</th>
           <th>学年</th>
           <th>教室</th>
+          <th>講座名</th>
+          <th>マスター/コア</th>
           <th>担当</th>
-          <th>年月</th>
-          <th>受講人数</th>
+          <th>在籍校</th>
+          <th>学科</th>
+          <th>性別</th>
+          <th>4月</th>
+          <th>5月</th>
+          <th>6月</th>
+          <th>7月</th>
+          <th>8月</th>
+          <th>9月</th>
+          <th>10月</th>
+          <th>11月</th>
+          <th>12月</th>
+          <th>1月</th>
+          <th>2月</th>
+          <th>3月</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr>
-          <td>{{ row["講座名"] }}</td>
           <td>{{ row["学年"] }}</td>
           <td>{{ row["教室"] }}</td>
+          <td>{{ row["講座名"] }}</td>
+          <td>{{ row["マスター/コア"] }}</td>
           <td>{{ row["担当"] }}</td>
-          <td>{{ row["年月"] }}</td>
-          <td class="num">{{ row["受講人数"] }}</td>
+          <td>{{ row["在籍校"] }}</td>
+          <td>{{ row["学科"] }}</td>
+          <td>{{ row["性別"] }}</td>
+          <td class="num">{{ row.get("4月", "") }}</td>
+          <td class="num">{{ row.get("5月", "") }}</td>
+          <td class="num">{{ row.get("6月", "") }}</td>
+          <td class="num">{{ row.get("7月", "") }}</td>
+          <td class="num">{{ row.get("8月", "") }}</td>
+          <td class="num">{{ row.get("9月", "") }}</td>
+          <td class="num">{{ row.get("10月", "") }}</td>
+          <td class="num">{{ row.get("11月", "") }}</td>
+          <td class="num">{{ row.get("12月", "") }}</td>
+          <td class="num">{{ row.get("1月", "") }}</td>
+          <td class="num">{{ row.get("2月", "") }}</td>
+          <td class="num">{{ row.get("3月", "") }}</td>
         </tr>
         {% endfor %}
       </tbody>
