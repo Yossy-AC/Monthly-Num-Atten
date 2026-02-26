@@ -1,7 +1,7 @@
 """
 受講人数集計ロジック
 
-Row 4をヘッダーとして読み込み、1ヶ月分を集計してストアに保存。
+Row 4をヘッダーとして読み込み、1ヶ月分を集計してCSV保存。
 build_pivot() で全月分をマージしてピボットを生成する。
 """
 from __future__ import annotations
@@ -12,8 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# ── 列番号マッピング（0-indexed） ──
-# Row 4がヘッダー：A=0, B=1, ..., AA=26
+# ── 列番号マッピング（0-indexed、Row 4がヘッダー） ──
 COLUMN_INDICES = {
     "add_date": 2,      # Column C: 受講追加日付
     "cancel_date": 6,   # Column G: 受講取消日付
@@ -29,10 +28,9 @@ COLUMN_INDICES = {
 
 # 学年コード → 表示名
 GRADE_LABELS = {31: "高1", 32: "高2", 33: "高3"}
-# 集計対象学年コード
 TARGET_GRADES = set(GRADE_LABELS.keys())
 
-KEY_COLS = ["学年", "教室", "講座名", "マスター/コア", "担当", "在籍校", "学科", "性別"]
+KEY_COLS = ["学年", "教室", "講座名", "M/C", "担当"]
 MONTH_ORDER = ["4月", "5月", "6月", "7月", "8月", "9月",
                "10月", "11月", "12月", "1月", "2月", "3月"]
 
@@ -40,155 +38,115 @@ RESULTS_DIR = Path("outputs/results")
 
 
 def parse_target_month(filename: str) -> pd.Period | None:
-    """ファイル名末尾の _YYMM からターゲット月を抽出。例: _2409 → 2024-09"""
+    """ファイル名末尾の _YYMM からターゲット月を抽出。例: _2504 → 2025-04"""
     m = re.search(r"_(\d{2})(\d{2})\.", filename)
-    if m:
-        year = 2000 + int(m.group(1))
-        month = int(m.group(2))
-        return pd.Period(f"{year}-{month:02d}", freq="M")
-    return None
+    if not m:
+        return None
+    year_suffix = int(m.group(1))
+    month = int(m.group(2))
+    # YY = 年度下2桁。4月～12月はそのまま、1月～3月は翌暦年
+    fiscal_year = 2000 + year_suffix
+    year = fiscal_year if month >= 4 else fiscal_year + 1
+    return pd.Period(f"{year}-{month:02d}", freq="M")
 
 
 def load_excel(file: bytes | Path) -> pd.DataFrame:
-    if isinstance(file, bytes):
-        return pd.read_excel(io.BytesIO(file), header=3)
-    return pd.read_excel(file, header=3)
-
-
-def _resolve_course_name(course: str, class_type: str) -> str:
-    """アドバンス/ハイレベル講座は K列の値を付加して別講座扱い"""
-    if pd.isna(class_type):
-        return course
-
-    class_str = str(class_type).strip()
-    course_str = str(course).strip()
-
-    if "ｱﾄﾞﾊﾞﾝｽ" in course_str or "ﾊｲﾚﾍﾞﾙ" in course_str:
-        return f"{course_str}{class_str}"
-
-    return course_str
+    src = io.BytesIO(file) if isinstance(file, bytes) else file
+    return pd.read_excel(src, header=3)
 
 
 def aggregate(df: pd.DataFrame, target_month: pd.Period | None = None) -> pd.DataFrame:
-    """
-    対象月1ヶ月分の受講予定人数を集計して返す。
-
-    基準日 = target_month の前月末（例：2024-09 → 2024-08-31）
-
-    Returns
-    -------
-    pd.DataFrame
-        列: 学年, 教室, 講座名, マスター/コア, 担当, {N月}
-    """
+    """対象月1ヶ月分の受講人数を集計（全操作ベクトル化）"""
     idx = COLUMN_INDICES
 
-    add_date_col = pd.to_datetime(df.iloc[:, idx["add_date"]], errors="coerce")
-    cancel_date_col = pd.to_datetime(df.iloc[:, idx["cancel_date"]], errors="coerce")
+    add_date = pd.to_datetime(df.iloc[:, idx["add_date"]], errors="coerce", format="mixed")
+    cancel_date = pd.to_datetime(df.iloc[:, idx["cancel_date"]], errors="coerce", format="mixed")
 
-    valid_dates = add_date_col.dropna()
-    if len(valid_dates) == 0:
+    if add_date.dropna().empty:
         return pd.DataFrame()
 
     if target_month is None:
-        target_month = valid_dates.max().to_period("M") + 1
+        target_month = add_date.dropna().max().to_period("M") + 1
 
     # 基準日 = target_month の前月末
-    cutoff_month = target_month - 1
-    month_end = cutoff_month.to_timestamp(freq="M")
+    cutoff = (target_month - 1).to_timestamp(freq="M")
     month_label = f"{target_month.month}月"
 
-    # 基準日時点で受講中の行をフィルタ
-    active_mask = (add_date_col <= month_end) & (
-        cancel_date_col.isna() | (cancel_date_col > month_end)
-    )
-
-    if not active_mask.any():
+    # アクティブ行フィルタ
+    active = (add_date <= cutoff) & (cancel_date.isna() | (cancel_date > cutoff))
+    if not active.any():
         return pd.DataFrame()
 
-    active_df = df[active_mask].copy()
-
-    # 集計対象学年のみに絞り込み（31=高1, 32=高2, 33=高3）
-    grade_col = active_df.iloc[:, idx["grade"]]
-    grade_mask = grade_col.isin(TARGET_GRADES)
-    active_df = active_df[grade_mask].copy()
-    if active_df.empty:
+    # 学年フィルタ
+    grade = df.iloc[:, idx["grade"]]
+    mask = active & grade.isin(TARGET_GRADES)
+    if not mask.any():
         return pd.DataFrame()
 
-    # 学年コードを表示名に変換
-    active_df["_grade_label"] = active_df.iloc[:, idx["grade"]].map(GRADE_LABELS)
+    sub = df.loc[mask]
 
-    active_df["_course_key"] = active_df.apply(
-        lambda r: _resolve_course_name(r.iloc[idx["course"]], r.iloc[idx["class_type"]]),
-        axis=1,
-    )
-    active_df["_class_type"] = active_df.iloc[:, idx["class_type"]].fillna("")
+    # 担当フィルタ：「0」「-」「」を除外
+    teacher = sub.iloc[:, idx["teacher"]].fillna("").astype(str).str.strip()
+    teacher_mask = ~teacher.isin(["0", "-", ""])
+    if not teacher_mask.any():
+        return pd.DataFrame()
+    sub = sub[teacher_mask]
 
-    grouped = (
-        active_df.groupby(
-            [
-                "_grade_label",
-                active_df.iloc[:, idx["classroom"]],
-                "_course_key",
-                "_class_type",
-                active_df.iloc[:, idx["teacher"]],
-                active_df.iloc[:, idx["school"]],
-                active_df.iloc[:, idx["department"]],
-                active_df.iloc[:, idx["gender"]],
-            ],
-            dropna=False,
-        )
-        .size()
-        .reset_index(name=month_label)
-    )
+    # 講座名解決（ベクトル化）
+    course = sub.iloc[:, idx["course"]].astype(str).str.strip()
+    class_type = sub.iloc[:, idx["class_type"]]
+    class_str = class_type.fillna("").astype(str).str.strip()
+    needs_suffix = course.str.contains("ｱﾄﾞﾊﾞﾝｽ|ﾊｲﾚﾍﾞﾙ", na=False) & class_str.ne("")
+    resolved_course = course.where(~needs_suffix, course + class_str)
 
-    grouped.columns = KEY_COLS + [month_label]
-    return grouped
+    # グループ化用 DataFrame を一括構築
+    group_df = pd.DataFrame({
+        "学年": sub.iloc[:, idx["grade"]].map(GRADE_LABELS),
+        "教室": sub.iloc[:, idx["classroom"]],
+        "講座名": resolved_course,
+        "M/C": class_str.values,
+        "担当": teacher.loc[teacher_mask],
+    })
+
+    result = group_df.groupby(KEY_COLS, dropna=False).size().reset_index(name=month_label)
+    return result
 
 
 def save_monthly_result(df: pd.DataFrame, target_month: pd.Period,
                         results_dir: Path = RESULTS_DIR) -> None:
-    """1ヶ月分の集計結果を CSV に保存（同月を再アップロードすると上書き）"""
+    """1ヶ月分の集計結果を CSV に保存"""
     results_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(results_dir / f"{target_month}.csv", index=False, encoding="utf-8-sig")
 
 
 def build_pivot(results_dir: Path = RESULTS_DIR) -> pd.DataFrame:
-    """保存済みの全月分を読み込み、年度ピボットを生成する"""
-    files = sorted(results_dir.glob("*.csv"))
+    """保存済みの全月CSVを読み込み、concat + groupby でピボット生成"""
+    files = list(results_dir.glob("*.csv"))
     if not files:
         return pd.DataFrame()
 
-    # 月ラベル → DataFrame のマッピングを構築
-    month_dfs: dict[str, pd.DataFrame] = {}
+    frames = []
     for f in files:
-        month_df = pd.read_csv(f, dtype=str)
-        month_col = [c for c in month_df.columns if c not in KEY_COLS]
-        if month_col:
-            month_dfs[month_col[0]] = month_df
-
-    if not month_dfs:
-        return pd.DataFrame()
-
-    # 会計年度順にマージ
-    result: pd.DataFrame | None = None
-    for month_label in MONTH_ORDER:
-        if month_label not in month_dfs:
+        mdf = pd.read_csv(f, dtype=str)
+        month_cols = [c for c in mdf.columns if c not in KEY_COLS]
+        if not month_cols:
             continue
-        month_df = month_dfs[month_label]
-        if result is None:
-            result = month_df.copy()
-        else:
-            result = result.merge(month_df, on=KEY_COLS, how="outer")
+        col = month_cols[0]
+        mdf[col] = pd.to_numeric(mdf[col], errors="coerce").fillna(0).astype(int)
+        frames.append(mdf)
 
-    if result is None:
+    if not frames:
         return pd.DataFrame()
 
-    # 欠損を 0 で埋める
-    available_months = [c for c in MONTH_ORDER if c in result.columns]
-    for col in available_months:
-        result[col] = result[col].fillna(0).astype(int)
+    merged = pd.concat(frames, ignore_index=True)
 
-    result = result[KEY_COLS + available_months]
+    # 各月列を集約（同一キーが複数CSVに跨る場合の安全策）
+    available = [c for c in MONTH_ORDER if c in merged.columns]
+    for col in available:
+        merged[col] = pd.to_numeric(merged[col], errors="coerce").fillna(0).astype(int)
+
+    result = merged.groupby(KEY_COLS, dropna=False)[available].sum().reset_index()
+    result = result[KEY_COLS + available]
     return result
 
 
