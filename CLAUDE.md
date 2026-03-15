@@ -193,3 +193,4 @@ uv run pytest tests/ --cov=services
 ## 最近の変更（2026年3月）
 - index.html: ステータスバー・月タグの色をCSS変数（`color-mix()`）に統一
 - main.py: エラーメッセージをユーザーフレンドリーに改善
+- main.py: 認証ミドルウェア・ヘルスチェックを `yossy-portal-lib` 共有ライブラリに移行

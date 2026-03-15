@@ -5,13 +5,14 @@ FastAPI + htmx
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+
+from yossy_portal_lib import portal_auth_middleware, add_health_endpoint
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -32,13 +33,8 @@ templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 
 app = FastAPI(title="月次受講人数集計")
 
-
-@app.middleware("http")
-async def portal_auth(request: Request, call_next):
-    if os.environ.get("BEHIND_PORTAL") == "true" and request.headers.get("X-Portal-Role"):
-        return await call_next(request)
-    # ポータル外からのアクセスはそのまま通す（Caddyのforward_authに委任）
-    return await call_next(request)
+app.middleware("http")(portal_auth_middleware)
+add_health_endpoint(app)
 
 
 @app.get("/", response_class=HTMLResponse)
