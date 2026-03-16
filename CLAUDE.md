@@ -190,3 +190,4 @@ uv run pytest tests/ --cov=services
 - index.html: ステータスバー・月タグの色をCSS変数（`color-mix()`）に統一
 - main.py: エラーメッセージをユーザーフレンドリーに改善
 - main.py: 認証ミドルウェア・ヘルスチェックを `yossy-portal-lib` 共有ライブラリに移行
+- main.py + テンプレート: CSP nonceミドルウェア（`csp_middleware`）追加、全`<script>`タグに`nonce`属性付与
