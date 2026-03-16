@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from yossy_portal_lib import portal_auth_middleware, add_health_endpoint
+from yossy_portal_lib import portal_auth_middleware, csp_middleware, add_health_endpoint
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -34,6 +34,7 @@ templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
 app = FastAPI(title="月次受講人数集計")
 
 app.middleware("http")(portal_auth_middleware)
+app.middleware("http")(csp_middleware)
 add_health_endpoint(app)
 
 
