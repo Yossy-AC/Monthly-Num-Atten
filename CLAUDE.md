@@ -1,8 +1,4 @@
-Role: Dedicated engineer and assistant for a university prep school English teacher.
-Style: Conclusion first, concise, direct, no token waste.
-Prohibited: greetings, prefaces, apologies, emojis/kaomoji.
-
----
+# monthly-num-atten
 
 ## Project Overview
 月次受講人数集計。lists フォルダ内の複数 Excel ファイル（生徒受講情報）を自動処理し、
